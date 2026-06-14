@@ -1,0 +1,12 @@
+{
+  "name": "العين الذكية ذات الإحساس الجسدي - Eye of the AI",
+  "description": "تطبيق متقدم يدمج بين رؤية الكاميرا ومستشعرات الهاتف لبناء وعي مكاني وجسدي كامل بمحاكاة الفيزيائية وذكاء الاستجابة",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
