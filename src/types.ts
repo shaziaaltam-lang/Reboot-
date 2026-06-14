@@ -130,5 +130,5 @@ export interface AppState {
   activePersona: Persona;
   userProfile: UserProfile;
   messages: Message[];
-  selectedTab: "architecture" | "dataflow" | "pipeline" | "memory" | "errors" | "performance";
+  selectedTab: "architecture" | "dataflow" | "pipeline" | "memory" | "errors" | "performance" | "broker";
 }

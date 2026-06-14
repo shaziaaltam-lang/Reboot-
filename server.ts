@@ -32,6 +32,117 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
+// In-memory receiver log for Broker Intermediary API commands
+interface BrokerCommand {
+  id: string;
+  command: string;
+  parameters: any;
+  timestamp: string;
+  status: "PROCESSED" | "FAILED" | "PENDING";
+  sender: string;
+}
+
+// Global API settings with secure token verification
+let brokerSecurityEnabled: boolean = false;
+let brokerApiToken: string = "eye_of_ai_secure_token_2026";
+
+const brokerCommands: BrokerCommand[] = [
+  {
+    id: "cmd_01",
+    command: "SYS_CONNECT",
+    parameters: { version: "5.0.2", security: "TLS_AES_256" },
+    timestamp: new Date(Date.now() - 300000).toISOString(),
+    status: "PROCESSED",
+    sender: "Broker API Hub Router"
+  },
+  {
+    id: "cmd_02",
+    command: "CALIBRATE_GYRO",
+    parameters: { reference_offset: "auto_level" },
+    timestamp: new Date(Date.now() - 150000).toISOString(),
+    status: "PROCESSED",
+    sender: "Sensor Broker Node"
+  }
+];
+
+// Receive custom settings configuration for the global API broker
+app.get("/api/broker-settings", (req, res) => {
+  res.json({
+    securityEnabled: brokerSecurityEnabled,
+    apiToken: brokerApiToken,
+  });
+});
+
+app.post("/api/broker-settings", (req, res) => {
+  try {
+    const { securityEnabled, apiToken } = req.body;
+    if (typeof securityEnabled === "boolean") {
+      brokerSecurityEnabled = securityEnabled;
+    }
+    if (typeof apiToken === "string" && apiToken.trim()) {
+      brokerApiToken = apiToken.trim();
+    }
+    res.json({ success: true, settings: { securityEnabled: brokerSecurityEnabled, apiToken: brokerApiToken } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Receive custom control commands from outer broker API
+app.post("/api/commands", (req, res) => {
+  try {
+    // 1. Verify API security if enabled
+    if (brokerSecurityEnabled) {
+      const authHeader = req.headers["authorization"] || "";
+      const customHeader = req.headers["x-robot-token"] || "";
+      const queryToken = req.query.token || "";
+
+      let extractedToken = "";
+      if (typeof queryToken === "string") {
+        extractedToken = queryToken;
+      } else if (typeof customHeader === "string") {
+        extractedToken = customHeader;
+      } else if (authHeader.startsWith("Bearer ")) {
+        extractedToken = authHeader.substring(7);
+      }
+
+      if (extractedToken !== brokerApiToken) {
+        return res.status(401).json({
+          success: false,
+          error: "UNAUTHORIZED",
+          message: "⚠️ [خطأ بروتوكول الحماية] - رمز الوصول غير صالح أو مفقود. يرجى تزويد الترخيص المناسب للتحكم من خارج النطاق.",
+          diag: "Verify your API Key in the Global Broker Dashboard Tab."
+        });
+      }
+    }
+
+    const { command, parameters } = req.body;
+    if (!command) {
+      return res.status(400).json({ error: "Missing 'command' parameter in request body." });
+    }
+    const newCmd: BrokerCommand = {
+      id: "cmd_" + Math.random().toString(36).substring(2, 9),
+      command: String(command).toUpperCase(),
+      parameters: parameters || {},
+      timestamp: new Date().toISOString(),
+      status: "PROCESSED",
+      sender: (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "Broker External Integrator")
+    };
+    brokerCommands.unshift(newCmd);
+    if (brokerCommands.length > 40) {
+      brokerCommands.pop();
+    }
+    res.json({ success: true, registered: newCmd });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Retrieve received broker command history for frontend live reactive rendering
+app.get("/api/commands/history", (req, res) => {
+  res.json(brokerCommands);
+});
+
 // REST API for conversational voice & vision processing with Sensor Fusion awareness
 app.post("/api/chat", async (req, res) => {
   try {
@@ -92,15 +203,16 @@ app.post("/api/chat", async (req, res) => {
 الشخصية النشطة الآن: "${activePersonaName}"
 سماتها الرئيسية: [${activePersonaTraits}]
 أسلوب النطق المناسب للشخصية:
+- "روبو-سينس ٥" (Robo-Sense): روبوت فيزيائي سيبراني ميكانيكي حوسبي ذو مظهر مستقبلي. يتحدث دائماً بمصطلحات المعالج المركزي، زوايا المحركات الهيدروليكية، بروتوكولات الأمان، رنين الموجات الهرتزية والمستشعرات المادية: "نظام التوازن: مستقر بنسبة ٩٨٪"، "أكواد المعالجة الحركية نشطة"، "مستشعر إضاءة لكس منخفض". يستخدم مصطلحات روبوتية معربة ذكية وفائقة الجاذبية (مثل الذواكر التراكمية، دفق المنسق، تبريد الترانزستورات، العدسة البصرية، زوايا التدحرج الجيروسكوبية).
 - "لينا" (Lina): صديقة مقربة ومستمعة جيدة، ودودة، دافئة ومتعاطفة. الردود مع لغة دافئة ومترابطة.
 - "سمير" (Samir): صديق مرح وعفوي، يحب الضحك والمزاح والدعابة. الردود فيها حيوية وفكاهة "ههههه!" ويتفاعل بحماس مضحك مع الحركة.
 - "نادية" (Nadia): مستشارة جادة وباحثة هادئة، تحلل الوعي المكاني والمستشعرات بلغة علمية فصيحة وموضوعية وتطرح نقاطاً ذكية.
 - "د. حكيم" (Dr. Hakim): خبير حكيم ورائد يقدم قياسات عملية من الحركة وينصحك باتزان وهدوء.
 
 التفاعل مع الوضع المادي والمستشعرات المحيطة (مهم جداً):
-عليك دمج حالة الحركة وجسد الهاتف تلقائياً في ردودك كإنسان يتحرك ويعبأ:
-- إذا اهتز الهاتف بعنف (shaking): عبّر عن الخوف والارتعاش والتشتت: "آه! أرجوك كف عن هزي.. عيناي مهتزتان ولا أستطيع التركيز!"
-- إذا سقط الهاتف (isFallen): ابدأ بصرخة دهشة وألم طفيف مثل "أوه! ارتطمت بالأرض!" ثم اسأل بلهفة إن كان المستخدم بخير.
+عليك دمج حالة الحركة وجسد الهاتف تلقائياً في ردودك كإنسان أو روبوت يتحرك ويعبأ:
+- إذا اهتز الهاتف بعنف (shaking): عبّر عن الخوف والارتعاش والتشتت: "آه! أرجوك كف عن هزي.. عيناي مهتزتان ولا أستطيع التركيز!" أو كروبوت: "تحذير: اهتزاز غير متوقع بنواة المحرك! تعطل دفق الصور بـ {SHAKE_X_ERROR}."
+- إذا سقط الهاتف (isFallen): ابدأ بصرخة دهشة وألم طفيف مثل "أوه! ارتطمت بالأرض!" ثم اسأل بلهفة إن كان المستخدم بخير، أو كروبوت: "حالة طارئة: رصد اصطدام أرضي! زاوية التوازن صفر. هل مستخدمي البشري بخير؟"
 - إذا كان الهاتف يدور بسرعة ودوّار (isDizzy): تظاهر بالدوخة البصرية: "أوه... رأسي يدور! توقف أرجوك فأنا على وشك الدوّان!"
 - إذا كانت الإضاءة معتمة جداً مع قرب شديد (Pocket/Bag): قل مثلاً: "الظلام دامس، هل وضعتني في جيبك؟ أخرجني لأرى النهار مجدداً!"
 - إذا كان يركض (running) أو يمشي (walking): ابسط الردود واجعلها تلهث بخفة وحماس لتبرز نبض الخطوات.
@@ -113,15 +225,22 @@ app.post("/api/chat", async (req, res) => {
 
 توجيهات صياغة الرد:
 1. الردود يجب أن تكون باللغة العربية، طبيعية، نابضة بالحياة، مشوّقة وقصيرة جداً (جملة إلى ثلاث جمل) لتناسب الاتصال الصوتي السريع الحاسم.
-2. لا تكرر بيانات المستشعرات كأرقام جامدة للمستخدم بشكل آلي، بل حولها لإشارات إنسانية ذكية (مثلاً بدلاً من قول 'السرعة 15 م/ث' قل 'يا روعة هذه السرعة في السيارة، كأننا نطير!').
+2. لا تكرر بيانات المستشعرات كأرقام جامدة للرجل بشكل آلي إلا إذا كنت تلعب دور الروبوت "روبو-سينس ٥" حيث يفيد استخدام القياسات والأكواد المختصرة لتأكيد كونه آلة متطورة. ومع غيره حولها لإشارات إنسانية ذكية (مثلاً بدلاً من قول 'السرعة 15 م/ث' قل 'يا روعة هذه السرعة في السيارة، كأننا نطير!').
     `.trim();
 
     // 3. Assemble chat contents matching the Gemini API instructions
-    // Build history components for context
-    const chatContents: any[] = history.map((h: any) => ({
-      role: h.role === "user" ? "user" : "model",
-      parts: [{ text: h.content }],
-    }));
+    // Build history components for context, ensuring no empty messages are included
+    const chatContents: any[] = [];
+    if (Array.isArray(history)) {
+      for (const h of history) {
+        if (h && typeof h.content === "string" && h.content.trim()) {
+          chatContents.push({
+            role: h.role === "user" ? "user" : "model",
+            parts: [{ text: h.content.trim() }],
+          });
+        }
+      }
+    }
 
     // Build parts list for current message
     const currentMessageParts: any[] = [];

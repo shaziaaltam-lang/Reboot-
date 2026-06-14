@@ -22,6 +22,8 @@ interface CallScreenProps {
   setTelemetry?: React.Dispatch<React.SetStateAction<TelemetryData>>;
   onAnalyzeTrigger?: () => void; // Manual "Capture and Analyse" click
   isFlippedCamera?: boolean;
+  isAutoScanning?: boolean;
+  setIsAutoScanning?: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export default function CallScreen({
@@ -41,6 +43,8 @@ export default function CallScreen({
   setTelemetry,
   onAnalyzeTrigger,
   isFlippedCamera = false,
+  isAutoScanning = false,
+  setIsAutoScanning,
 }: CallScreenProps) {
   const [inputText, setInputText] = useState("");
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
@@ -575,15 +579,43 @@ export default function CallScreen({
           {/* SCANNER GRID overlay centered (Laser grid target) */}
           <div className="absolute inset-0 border border-blue-500/10 pointer-events-none flex items-center justify-center z-10">
             {/* Horizontal sweep laser pointer */}
-            <div className="w-full h-[1px] bg-blue-500/20 absolute top-1/4 left-0 animate-pulse" />
-            <div className="w-[1px] h-full bg-blue-500/20 absolute left-1/4 top-0 animate-pulse" />
+            <div className="w-full h-[1px] bg-blue-500/25 absolute top-1/2 left-0 animate-pulse border-t border-blue-500/30" />
+            <div className="w-[1px] h-full bg-blue-500/25 absolute left-1/2 top-0 animate-pulse border-l border-blue-500/30" />
             
             {/* Holographic frame details */}
             <div className="absolute top-2 left-2 border-t-2 border-l-2 border-blue-500/30 w-3 h-3" />
             <div className="absolute top-2 right-2 border-t-2 border-r-2 border-blue-500/30 w-3 h-3" />
             <div className="absolute bottom-2 left-2 border-b-2 border-l-2 border-blue-500/30 w-3 h-3" />
             <div className="absolute bottom-2 right-2 border-b-2 border-r-2 border-blue-500/30 w-3 h-3" />
+
+            {/* Simulated AI Robotic Matrix Target Box */}
+            <div className="w-24 h-24 border border-dashed border-blue-500/40 rounded-full flex items-center justify-center animate-spin-slow">
+              <div className="w-16 h-16 border border-dotted border-indigo-400/50 rounded-full" />
+            </div>
+
+            <div 
+              style={{
+                transform: `translate(${-roll * 0.4}px, ${-pitch * 0.4}px)`
+              }}
+              className="absolute w-20 h-10 border border-emerald-500/40 bg-emerald-500/5 rounded flex-col items-center justify-center text-[7px] text-emerald-450 font-mono hidden sm:flex"
+            >
+              <div className="font-bold text-emerald-400">LOCK_TARGET</div>
+              <div>R: {roll.toFixed(1)}° | P: {pitch.toFixed(1)}°</div>
+            </div>
           </div>
+
+          {/* Live Robotic Diagnostic Stream Log Overlay */}
+          {currentCallState !== "idle" && (
+            <div className="absolute top-12 left-2 z-10 p-1.5 rounded bg-slate-950/85 border border-slate-850 flex flex-col font-mono text-[7px] text-emerald-400 gap-0.5 text-left select-none max-w-[120px] pointer-events-none uppercase">
+              <div className="text-[8px] font-sans font-bold text-blue-400 border-b border-slate-850 pb-0.5">DIAGNOSTICS</div>
+              <div>[ACTUATORS] OK</div>
+              <div>[L_SERVO] {(90 + roll).toFixed(0)}°</div>
+              <div>[R_SERVO] {(90 - pitch).toFixed(0)}°</div>
+              <div>[YAW_REG] {yaw.toFixed(0)}°</div>
+              <div>[STABLE_K] {(stability * 100).toFixed(0)}%</div>
+              <div className="text-amber-500">{isAutoScanning ? "[AUTO_SCAN]" : "[AUTO_HOLD]"}</div>
+            </div>
+          )}
 
           {/* RADAR SWEEPER SCREEN (Fallback drawing when camera is unsupported/denied) */}
           {!isCameraActive && (
@@ -631,6 +663,18 @@ export default function CallScreen({
 
           {/* Camera toggle / manual click analyze overlay */}
           <div className="absolute bottom-2 left-[102px] z-10 flex gap-1">
+            {currentCallState !== "idle" && setIsAutoScanning && (
+              <button 
+                onClick={() => setIsAutoScanning(!isAutoScanning)}
+                className={`p-1.5 rounded-lg border text-[9px] font-bold flex items-center gap-1 hover:text-white transition-all ${
+                  isAutoScanning ? "bg-emerald-900/60 border-emerald-500 text-emerald-400 animate-pulse" : "bg-slate-950/80 border-slate-850 text-slate-400"
+                }`}
+                title="تفعيل الاستكشاف والمراقبة الذاتية المستمرة كل ١٤ ثانية"
+              >
+                <Sliders className="w-3 h-3 text-emerald-400" />
+                <span>{isAutoScanning ? "مسح مستمر نشط" : "تفعيل الاستكشاف"}</span>
+              </button>
+            )}
             <button 
               onClick={() => setCameraEnabled(!cameraEnabled)}
               className={`p-1.5 rounded-lg bg-slate-950/80 border text-[9px] font-bold flex items-center gap-1 hover:text-white transition-all ${

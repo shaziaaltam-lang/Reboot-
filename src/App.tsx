@@ -7,6 +7,7 @@ import { Persona, UserProfile, Message, TelemetryData } from "./types";
 import { PERSONAS } from "./data";
 import CallScreen from "./components/CallScreen";
 import Dashboard from "./components/Dashboard";
+import soundSynth from "./utils/soundGenerator";
 
 // Web Speech APIs recognition helper safety setups
 const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -14,9 +15,11 @@ const SpeechRecognition = (window as any).SpeechRecognition || (window as any).w
 export default function App() {
   // Global React application state binding
   const [currentCallState, setCurrentCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
-  const [activePersona, setActivePersona] = useState<Persona>(PERSONAS[0]); // Starts with Lina
-  const [selectedDashboardTab, setSelectedDashboardTab] = useState<"architecture" | "dataflow" | "pipeline" | "memory" | "errors" | "performance">("architecture");
+  const [activePersona, setActivePersona] = useState<Persona>(PERSONAS[0]); // Starts with RoboSense 5 or Lina
+  const [selectedDashboardTab, setSelectedDashboardTab] = useState<"architecture" | "dataflow" | "pipeline" | "memory" | "errors" | "performance" | "broker">("architecture");
   const [isFlippedCamera, setIsFlippedCamera] = useState(false); // Front vs rear camera toggle
+  const [isAutoScanning, setIsAutoScanning] = useState(false); // Robot continuous exploration scanning toggle
+  const lastHumTimeRef = useRef<number>(0); // Throttle physical actuator audio feedback
   
   // Initialize user profile with realistic rich mock/local data
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
@@ -148,6 +151,14 @@ export default function App() {
           const deltaPitch = Math.abs(prev.motion.pitch - rawPitch);
           const currentStability = Math.max(0.05, Math.min(1.0, 1.0 - (deltaRoll + deltaPitch) / 30));
 
+          // Throttled robotic hydraulic joint sound synthesis
+          const nowStr = Date.now();
+          if (nowStr - lastHumTimeRef.current > 140 && (deltaRoll > 1.8 || deltaPitch > 1.8)) {
+            soundSynth.playHydraulicMove(Math.max(0.5, Math.min(3, (deltaRoll + deltaPitch) / 4)));
+            soundSynth.updateTurbinePitch(rawRoll);
+            lastHumTimeRef.current = nowStr;
+          }
+
           return {
             ...prev,
             motion: {
@@ -250,6 +261,23 @@ export default function App() {
       if (pedometerInterval) clearInterval(pedometerInterval);
     };
   }, [currentCallState]);
+
+  // Hook 4: Autonomous Robotic Scanning Loop Engine (Patrol Mode)
+  useEffect(() => {
+    let scanInterval: NodeJS.Timeout | null = null;
+    if (isAutoScanning && currentCallState !== "idle") {
+      scanInterval = setInterval(() => {
+        // Only trigger if we are waiting for user voice (stable/listening state)
+        if (activeCallStateRef.current === "listening" && !isSpeakingRef.current && !isUserSendingRef.current) {
+          soundSynth.playCameraShutter();
+          handleIncomingVoiceTranscript("تقرير استكشاف آلي: فحص الكاميرا للبيئة، والتحقق من الاستقرار الهيكلي والاتزان الميكانيكي.");
+        }
+      }, 14000); // scan environment every 14 seconds
+    }
+    return () => {
+      if (scanInterval) clearInterval(scanInterval);
+    };
+  }, [isAutoScanning, currentCallState]);
 
   // Initialize Speech recognition instance inside client
   useEffect(() => {
@@ -697,6 +725,10 @@ export default function App() {
   const handleToggleCall = () => {
     isUserSendingRef.current = false;
     if (currentCallState === "idle") {
+      // Authentic Robotic audio chime & turbine hum
+      soundSynth.playConnectionChime();
+      soundSynth.toggleTurbineStream(true);
+
       // Connect Phone
       setCurrentCallState("listening");
       setStatusText("جاري تشغيل العين الذكية وفحص مستشعرات القصور الحركي...");
@@ -707,6 +739,8 @@ export default function App() {
       ];
 
       if (telemetry.fusion.isFallen) {
+        // Warning acoustic alarm
+        soundSynth.playAlarmWarning();
         greeting = "أوتش! قرأت جيرسكوبياً سقوط الهاتف فجأة! هل أنت بخير يا صديقي؟";
       }
 
@@ -725,6 +759,11 @@ export default function App() {
   };
 
   const handleEndCall = () => {
+    // Authentic robot shutdown chime
+    soundSynth.playSystemBeep();
+    soundSynth.toggleTurbineStream(false);
+    setIsAutoScanning(false);
+
     isUserSendingRef.current = false;
     setCurrentCallState("idle");
     setStatusText("تم إغلاق نظام المكالمة وتجميد المعالج البصري.");
@@ -816,6 +855,8 @@ export default function App() {
             setTelemetry={setTelemetry}
             onAnalyzeTrigger={handleManualAnalyzeRequest}
             isFlippedCamera={isFlippedCamera}
+            isAutoScanning={isAutoScanning}
+            setIsAutoScanning={setIsAutoScanning}
           />
         </div>
 

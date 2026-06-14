@@ -1,6 +1,6 @@
 {
-  "name": "العين الذكية ذات الإحساس الجسدي - Eye of the AI",
-  "description": "تطبيق متقدم يدمج بين رؤية الكاميرا ومستشعرات الهاتف لبناء وعي مكاني وجسدي كامل بمحاكاة الفيزيائية وذكاء الاستجابة",
+  "name": "Eye of the AI",
+  "description": "A sensory-bodily AI assistant integrating live camera vision and phone telemetry for enhanced spatial and physical awareness.",
   "requestFramePermissions": [
     "camera",
     "microphone",
