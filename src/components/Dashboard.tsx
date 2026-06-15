@@ -365,14 +365,81 @@ fetch(\`\${currentURL}/api/commands\`, {
         setSocket1TextInput(""); // clear on success
       } else {
         const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.message || "Failed socket stream packet response");
+        const status = response.status;
+        if (status === 503 || status === 429 || errJson.error === "API_KEY_MISSING" || errJson.error === "QUOTA_EXCEEDED") {
+          // Robust high-fidelity fallback simulation
+          let reply = "";
+          const isShaking = telemetry?.fusion?.movement_state === "shaking";
+          const isFallen = telemetry?.fusion?.isFallen;
+          const trackingValue = (telemetry?.fusion?.stability_score ?? 1) * 100;
+
+          if (isFallen) {
+            reply = `[مستشعر السقوط]: عاجل! الهاتف في حالة سقوط بوزاوية حادة؛ سُجلت قراءة ارتطام دقيقة! هل أصبت بأذى؟ أرجوك طمئني عليك!`;
+          } else if (isShaking) {
+            reply = `[جيروسكوب الرصد]: حركات اهتزاز غير مستقرة بالمرة! توازن الهاتف يتقلب؛ يرجى التوقف عن الحركة حتى تعيد العدسة ضبط خط الرؤية!`;
+          } else if (activePersona.id === "lina") {
+            reply = `يا صديقي، لقد استقبلت رسالتك محلياً: "${txt}". توازننا حركياً وبصرياً ممتاز ومستقر، دعنا نمضي لرحلتنا معاً!`;
+          } else if (activePersona.id === "samir") {
+            reply = `ههههه واصل بث الحزم من مقبسك البطل! استلمت "${txt}" وتوازننا مستقر بنسبة ${trackingValue.toFixed(0)}% محلياً؛ ما رأيك بجولة مرحة إضافية؟`;
+          } else if (activePersona.id === "nadia") {
+            reply = `تمت حوسبة حزمة مقبستك رقم 1 بنجاح كاستجابة موضوعية محلية: "${txt}". زاوية الميلان الحالية ${telemetry?.motion?.pitch?.toFixed(1) ?? "0.0"} درجة والتسارع مستقر.`;
+          } else if (activePersona.id === "robo_sense") {
+            reply = `[شعبة المعالجة الفيزيائية]: تم التقاط حزمة المقبس 1: "${txt}". توازن الهيدروليكيات ${trackingValue.toFixed(0)}%. بروتوكول الوعي المحلي نشط بالكامل.`;
+          } else {
+            reply = `استلمت رسالتك يا بني محلياً: "${txt}". نحن نمضي معاً تتبعنا سليم والذاكرة المؤقتة مسجّلة بشكل مرن وبسيط للغاية.`;
+          }
+
+          const timeRecv = new Date().toLocaleTimeString();
+          // Update socket packets outbound
+          setSocketTraffic(old => ({
+            ...old,
+            socket_2_text_out: {
+              ...old.socket_2_text_out,
+              packets: old.socket_2_text_out.packets + 1,
+              bytes: old.socket_2_text_out.bytes + reply.length
+            }
+          }));
+
+          setActiveSocketLogs(prev => [
+            { time: timeRecv, level: "SOCKET 2 FALLBACK", msg: `[محاكاة العقل الذكي]: "${reply}"` },
+            ...prev
+          ]);
+          soundSynth.playConnectionChime();
+          setSocket1TextInput("");
+        } else {
+          throw new Error(errJson.message || "Failed socket stream packet response");
+        }
       }
     } catch (err: any) {
+      let reply = "";
+      const isShaking = telemetry?.fusion?.movement_state === "shaking";
+      const isFallen = telemetry?.fusion?.isFallen;
+      const trackingValue = (telemetry?.fusion?.stability_score ?? 1) * 100;
+
+      if (isFallen) {
+        reply = `🔍 [رصد سقوط فيزيائي]: رصد خطأ اصطدام حركي حاد! هل سقط مني الهاتف؟ طمئني عليك يا صديقي!`;
+      } else if (isShaking) {
+        reply = `⚡ [محور التوازن]: اهتزاز حاد يفقد النظام استقراره الحركي! يرجى تثبيت الهاتف لاستعادة المسح الجيروسكوبي.`;
+      } else {
+        reply = `استلمت حزمة مقبسك محلياً بنجاح: "${txt}". توازننا مستقر تماماً بنسبة ${trackingValue.toFixed(0)}% والبوصلة تشير إلى اتجاه ${telemetry?.gps?.heading?.toFixed(0) ?? "0"}° درجة!`;
+      }
+
+      const timeRecv = new Date().toLocaleTimeString();
+      setSocketTraffic(old => ({
+        ...old,
+        socket_2_text_out: {
+          ...old.socket_2_text_out,
+          packets: old.socket_2_text_out.packets + 1,
+          bytes: old.socket_2_text_out.bytes + reply.length
+        }
+      }));
+
       setActiveSocketLogs(prev => [
-        { time: new Date().toLocaleTimeString(), level: "SOCKET 2 ERROR", msg: `فشل التوصيل أو تزويد الـ API Key: ${err.message}` },
+        { time: timeRecv, level: "SOCKET 2 FALLBACK", msg: `[محلي]: "${reply}" (خطأ الخادم: ${err.message})` },
         ...prev
       ]);
-      soundSynth.playAlarmWarning();
+      soundSynth.playConnectionChime();
+      setSocket1TextInput("");
     }
   };
 
@@ -1075,6 +1142,408 @@ curl -X POST "${typeof window !== "undefined" ? window.location.origin : "https:
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* NEW ALL-SOCKETS INTERACTIVE COCKPIT OPERATIONS DECK */}
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2.5 border-b border-slate-850 gap-2">
+                <div>
+                  <h3 className="text-xs font-black text-white flex items-center gap-1.5">
+                    <Sliders className="w-4 h-4 text-emerald-400 animate-pulse" />
+                    <span>منصة التشغيل الكامل والتحكم الموحد لجميع المقابس الثمانية (Integrated 8-Sockets Cockpit Operations Deck)</span>
+                  </h3>
+                  <p className="text-[9px] text-slate-400 mt-0.5" dir="rtl">
+                    هنا يمكنك إرسال الطلبات، رصد الاستجابات الإدراكية، التقاط الكاميرا، توجيه السيرفو، وتوليد الرنين الصوتي لجميع المقابس الثمانية متزامنة في شاشة واحدة.
+                  </p>
+                </div>
+                <div className="text-[8px] bg-slate-900 border border-slate-800 text-slate-450 font-mono px-2 py-0.5 rounded">
+                  8-CH SIMULTANEOUS TRANSCEIVER
+                </div>
+              </div>
+
+              {/* Bento Grid layout representing the 8 sockets */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" dir="rtl">
+                
+                {/* 1. Sockets 1 & 2 Card: Dialog & Thought Interface */}
+                <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-900 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-850/60">
+                      <span className="text-[10px] text-blue-400 font-bold flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-blue-400" />
+                        <span>مقبس 1 & 2: دفق المحادثة واستدلال العقل</span>
+                      </span>
+                      <span className="text-[7.5px] font-mono text-slate-500">2-Way Dialog</span>
+                    </div>
+                    
+                    <p className="text-[8.5px] text-slate-400 mt-1 leading-normal text-right">
+                      بث رسائل المستخدم النصية فورياً واستلام استجابات عقل الريبوت الدلالية عبر مقابس الاتصال.
+                    </p>
+
+                    <div className="mt-2 space-y-2">
+                      <input 
+                        type="text"
+                        value={socket1TextInput}
+                        onChange={(e) => setSocket1TextInput(e.target.value)}
+                        placeholder="أدخل النص (مثال: كيف الاتزان)"
+                        className="w-full bg-slate-950 border border-slate-800 text-[10px] px-2 py-1 rounded text-right text-slate-200 focus:outline-none focus:border-blue-900"
+                        onKeyDown={(e) => { if (e.key === "Enter") handleSocket1Send(); }}
+                      />
+                      
+                      <div className="p-1.5 rounded bg-slate-950 border border-slate-900 text-right text-[8.5px] space-y-1">
+                        <div className="flex justify-between text-slate-500 text-[7px] font-mono">
+                          <span>عاطفة عقل الريبوت:</span>
+                          <span className="text-emerald-400 uppercase font-bold">{lastAnalysis?.emotion || "CALM"}</span>
+                        </div>
+                        <div className="text-slate-350 truncate">
+                          {lastAnalysis?.normalizedText ? `آخر استنتاج: "${lastAnalysis.normalizedText}"` : "بانتظار تفعيل الطلب النصي..."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSocket1Send}
+                    className="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-[10px] transition-all flex items-center justify-center gap-1"
+                  >
+                    <Play className="w-2.5 h-2.5" />
+                    <span>بث حزمة النص الموحد (Socket 1 Send)</span>
+                  </button>
+                </div>
+
+                {/* 2. Socket 3 Card: Lens & Spatial Vision Viewfinder */}
+                <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-900 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-850/60">
+                      <span className="text-[10px] text-cyan-400 font-bold flex items-center gap-1">
+                        <Eye className="w-3 h-3 text-cyan-400" />
+                        <span>مقبس 3: دفق العدسة البصرية ومسح المحيط</span>
+                      </span>
+                      <span className="text-[7.5px] font-mono text-slate-500">Video Chunk Out</span>
+                    </div>
+
+                    <div className="mt-1 flex gap-2">
+                      {/* Interactive CSS Camera viewpoint simulation */}
+                      <div className="w-16 h-16 rounded border border-cyan-900 bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden flex-shrink-0">
+                        {/* Red flashing dot and green scanner line */}
+                        <div className="absolute top-1 right-1 flex items-center gap-0.5">
+                          <span className="h-1 w-1 rounded-full bg-rose-500 animate-ping" />
+                          <span className="text-[5px] text-rose-500 font-mono scale-90">REC</span>
+                        </div>
+                        <div className="w-full h-[1px] bg-cyan-500/60 absolute left-0 text-center animate-bounce" />
+                        <Eye className="w-5 h-5 text-cyan-500/30" />
+                        <span className="text-[5.5px] text-slate-600 font-mono">1080p // 15</span>
+                      </div>
+
+                      <div className="text-right leading-normal">
+                        <p className="text-[8.5px] text-slate-400">
+                          بث صور العدسة لـ Gemini كحزم بايتات مشفرة لتمكينه من قراءة العقبات المكانية.
+                        </p>
+                        <div className="mt-1 text-[7.5px] text-slate-500 font-mono text-left" dir="ltr">
+                          Size: {(socketTraffic.socket_3_vision.bytes / 1024).toFixed(0)} KB
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSocket3VisionSend}
+                    className="w-full py-1 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black rounded text-[10px] transition-all flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-2.5 h-2.5" />
+                    <span>توفير لقطة العدسة (Scan environment)</span>
+                  </button>
+                </div>
+
+                {/* 3. Socket 4 Card: DB Sync & Memory Ledger */}
+                <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-900 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-850/60">
+                      <span className="text-[10px] text-purple-400 font-bold flex items-center gap-1">
+                        <Database className="w-3 h-3 text-purple-400" />
+                        <span>مقبس 4: مزامنة الذاكرة ووعاء البيانات</span>
+                      </span>
+                      <span className="text-[7.5px] font-mono text-slate-500">Persistent Cache</span>
+                    </div>
+
+                    <p className="text-[8.5px] text-slate-400 mt-1 leading-normal text-right">
+                      متابعة المعلومات الشخصية المستنتجة والاهتمامات المسجلة آلياً في قاعدة الذاكرة التراكمية.
+                    </p>
+
+                    <div className="mt-2 text-right text-[8px] bg-slate-950 p-2 rounded border border-slate-900 space-y-1">
+                      <div className="flex justify-between text-[7.5px]">
+                        <span className="text-slate-500">المستثمر:</span>
+                        <span className="text-white font-bold">{userProfile.name || "مجهول"}</span>
+                      </div>
+                      <div className="flex justify-between text-[7.5px]">
+                        <span className="text-slate-500">عدد الحقائق بالـ DB:</span>
+                        <span className="text-purple-400 font-mono"> {userProfile.known_facts?.length || 0} حقائق</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSocket4MemorySync}
+                    className="w-full py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded text-[10px] transition-all flex items-center justify-center gap-1"
+                  >
+                    <Database className="w-2.5 h-2.5" />
+                    <span>مزامنة كاش الذاكرة الطويلة (Sync Memory)</span>
+                  </button>
+                </div>
+
+                {/* 4. Socket 5 Card: Mechanical Joint Rotator & D-pad Controller */}
+                <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-900 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-850/60">
+                      <span className="text-[10px] text-orange-400 font-bold flex items-center gap-1">
+                        <Sliders className="w-3 h-3 text-orange-400" />
+                        <span>مقبس 5: تحريك ذراع ومفاصل الريبوت (Slight Movement)</span>
+                      </span>
+                      <span className="text-[7.5px] font-mono text-slate-500">Yaw/Pitch Axis</span>
+                    </div>
+
+                    <div className="mt-1.5 flex gap-2 items-center justify-between">
+                      {/* Circular or Crosspad joystick controller buttons */}
+                      <div className="grid grid-cols-3 gap-1 w-20 h-20 bg-slate-950 p-1 rounded-full border border-slate-900 relative flex-shrink-0" dir="ltr">
+                        <div />
+                        <button
+                          onClick={() => {
+                            updateSensors(prev => ({ motion: { ...prev.motion, pitch: Math.min(90, prev.motion.pitch + 10) } }));
+                            soundSynth.playHydraulicMove(1);
+                            setSocketTraffic(prev => ({
+                              ...prev,
+                              socket_5_movement: { ...prev.socket_5_movement, packets: prev.socket_5_movement.packets + 1, bytes: prev.socket_5_movement.bytes + 14 }
+                            }));
+                            setActiveSocketLogs(l => [{ time: new Date().toLocaleTimeString(), level: "SOCKET 5", msg: "توجيه محرك الارتفاع (+10 درجة راسية)." }, ...l]);
+                          }}
+                          className="bg-slate-900 hover:bg-slate-800 text-orange-400 font-bold text-[9px] rounded flex items-center justify-center active:scale-95 transition-all"
+                          title="حرك للأعلى (Pitch+)"
+                        >
+                          ▲
+                        </button>
+                        <div />
+
+                        <button
+                          onClick={() => {
+                            updateSensors(prev => ({ motion: { ...prev.motion, yaw: Math.max(-180, prev.motion.yaw - 15) } }));
+                            soundSynth.playHydraulicMove(1);
+                            setSocketTraffic(prev => ({
+                              ...prev,
+                              socket_5_movement: { ...prev.socket_5_movement, packets: prev.socket_5_movement.packets + 1, bytes: prev.socket_5_movement.bytes + 14 }
+                            }));
+                            setActiveSocketLogs(l => [{ time: new Date().toLocaleTimeString(), level: "SOCKET 5", msg: "توجيه محرك الدوران اليساري (-15 درجة أفقية)." }, ...l]);
+                          }}
+                          className="bg-slate-900 hover:bg-slate-800 text-orange-400 font-bold text-[9px] rounded flex items-center justify-center active:scale-95 transition-all"
+                          title="يسار (Yaw-)"
+                        >
+                          ◀
+                        </button>
+                        <button
+                          onClick={() => {
+                            updateSensors(prev => ({ motion: { ...prev.motion, yaw: 0, pitch: 0, roll: 0 } }));
+                            soundSynth.playHydraulicMove(1);
+                            setActiveSocketLogs(l => [{ time: new Date().toLocaleTimeString(), level: "SOCKET 5", msg: "تصفير وإعادة تموضع محاور الريبوت تلقائياً." }, ...l]);
+                          }}
+                          className="bg-orange-555 hover:bg-orange-500 text-white font-black text-[7px] rounded-full flex items-center justify-center active:scale-90 transition-all shadow-md shadow-orange-950"
+                          title="تصفير المحاور (Center)"
+                        >
+                          RST
+                        </button>
+                        <button
+                          onClick={() => {
+                            updateSensors(prev => ({ motion: { ...prev.motion, yaw: Math.min(180, prev.motion.yaw + 15) } }));
+                            soundSynth.playHydraulicMove(1);
+                            setSocketTraffic(prev => ({
+                              ...prev,
+                              socket_5_movement: { ...prev.socket_5_movement, packets: prev.socket_5_movement.packets + 1, bytes: prev.socket_5_movement.bytes + 14 }
+                            }));
+                            setActiveSocketLogs(l => [{ time: new Date().toLocaleTimeString(), level: "SOCKET 5", msg: "توجيه محرك الدوران اليميني (+15 درجة أفقية)." }, ...l]);
+                          }}
+                          className="bg-slate-900 hover:bg-slate-800 text-orange-400 font-bold text-[9px] rounded flex items-center justify-center active:scale-95 transition-all"
+                          title="يمين (Yaw+)"
+                        >
+                          ▶
+                        </button>
+
+                        <div />
+                        <button
+                          onClick={() => {
+                            updateSensors(prev => ({ motion: { ...prev.motion, pitch: Math.max(-90, prev.motion.pitch - 10) } }));
+                            soundSynth.playHydraulicMove(1);
+                            setSocketTraffic(prev => ({
+                              ...prev,
+                              socket_5_movement: { ...prev.socket_5_movement, packets: prev.socket_5_movement.packets + 1, bytes: prev.socket_5_movement.bytes + 14 }
+                            }));
+                            setActiveSocketLogs(l => [{ time: new Date().toLocaleTimeString(), level: "SOCKET 5", msg: "توجيه محرك الارتفاع (-10 درجة راسية)." }, ...l]);
+                          }}
+                          className="bg-slate-900 hover:bg-slate-800 text-orange-400 font-bold text-[9px] rounded flex items-center justify-center active:scale-95 transition-all"
+                          title="حرك للأسفل (Pitch-)"
+                        >
+                          ▼
+                        </button>
+                        <div />
+                      </div>
+
+                      <div className="text-right text-[8px] space-y-1 bg-slate-950 p-1.5 rounded border border-slate-900 flex-grow max-w-[120px] font-mono leading-none" dir="ltr">
+                        <div className="text-slate-500 border-b border-slate-900 pb-0.5 text-[7px]" dir="rtl">المحاور الحالية:</div>
+                        <div className="text-slate-300">Yaw: <span className="text-orange-400">{telemetry.motion.yaw.toFixed(0)}°</span></div>
+                        <div className="text-slate-300">Pitch: <span className="text-orange-400">{telemetry.motion.pitch.toFixed(0)}°</span></div>
+                        <div className="text-slate-300">Roll: <span className="text-orange-400">{telemetry.motion.roll.toFixed(0)}°</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[7.5px] text-slate-500 font-mono leading-none text-center">
+                    * حرك المقود الدائري لأعلى/أسفل أو يمين/يسار لبث إحداثيات السيرفو.
+                  </div>
+                </div>
+
+                {/* 5. Socket 6 Card: Body Sensors Stream Tracker */}
+                <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-900 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-850/60">
+                      <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                        <Compass className="w-3 h-3 text-amber-500" />
+                        <span>مقبس 6: دفق قياسات مستشعرات اتزان الهاتف</span>
+                      </span>
+                      <span className="text-[7.5px] font-mono text-slate-500">Body Telemetry</span>
+                    </div>
+
+                    <p className="text-[8.5px] text-slate-400 mt-1 leading-normal text-right">
+                      بث بيانات الأفق والارتفاع ومستوى الضوء للذكاء السحابي لحظياً.
+                    </p>
+
+                    <div className="mt-2 grid grid-cols-2 gap-1.5 text-right font-mono text-[8px] bg-slate-950 p-2 rounded border border-slate-900">
+                      <div>
+                        <span className="text-slate-500 block">الإضاءة الحقيقية:</span>
+                        <span className="text-slate-200">{telemetry.env.brightnessLux} Lux</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">الضغط الجوي:</span>
+                        <span className="text-slate-200">{telemetry.env.pressureHpa.toFixed(0)} hPa</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsStreamingSensors(!isStreamingSensors);
+                      soundSynth.playConnectionChime();
+                    }}
+                    className={`w-full py-1 rounded text-[10px] font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                      isStreamingSensors ? "bg-amber-955 border-amber-500 text-amber-400 animate-pulse" : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${isStreamingSensors ? "bg-amber-400 animate-ping" : "bg-slate-550"}`} />
+                    <span>{isStreamingSensors ? "إيقاف دفق مستشعرات المقبس 6" : "تفعيل بث المستشعرات الميكرو (Socket 6 Stream)"}</span>
+                  </button>
+                </div>
+
+                {/* 6. Socket 7 Card: Text To Speech soundwave synthesis */}
+                <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-900 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-850/60">
+                      <span className="text-[10px] text-rose-455 font-bold flex items-center gap-1">
+                        <Activity className="w-3 h-3 text-rose-500" />
+                        <span>مقبس 7: كاشف الرنين والنطق الصوتي بالـ Wave</span>
+                      </span>
+                      <span className="text-[7.5px] font-mono text-slate-500">Audio Synthesis</span>
+                    </div>
+
+                    <p className="text-[8.5px] text-slate-400 mt-1 leading-normal text-right">
+                      توليد النطق الطبيعي وتمايز التردد السلكي واللاسلكي لنبرة الريبوت المخصصة {activePersona.name}.
+                    </p>
+
+                    {/* Animated visual Soundwave */}
+                    <div className="h-6 bg-slate-950 rounded border border-slate-900 flex items-center justify-center gap-1.5 overflow-hidden my-2">
+                      {[1, 2, 3, 4, 5, 6, 7].map(i => (
+                        <div
+                          key={i}
+                          className="w-1.5 bg-rose-500 rounded-full animate-bounce"
+                          style={{
+                            height: `${40 + Math.sin(i * 1.5) * 45}%`,
+                            animationDuration: `${0.6 + i * 0.15}s`
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSocket7SpeechSweep}
+                    className="w-full py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[10px] transition-all flex items-center justify-center gap-1"
+                  >
+                    <Activity className="w-2.5 h-2.5" />
+                    <span>تشغيل رنين المقبس السمعي (Trigger Speech)</span>
+                  </button>
+                </div>
+
+                {/* 7. Socket 8 Card: JSON Raw Protocol Command Injection */}
+                <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-900 flex flex-col justify-between gap-2.5 lg:col-span-3">
+                  <div>
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-850/60">
+                      <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1">
+                        <Terminal className="w-3 h-3 text-indigo-400" />
+                        <span>مقبس 8: حاقن الأوامر التناصفية والبروتوكول الصريح</span>
+                      </span>
+                      <span className="text-[7.5px] font-mono text-slate-500">JSON API Node</span>
+                    </div>
+
+                    <div className="mt-1 flex flex-col sm:flex-row gap-2.5">
+                      <div className="flex-grow sm:w-1/2 space-y-1.5 text-right">
+                        <label className="block text-[8px] text-slate-500">أكواد سريعة جاهزة للحاقن البرمجي:</label>
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            onClick={() => {
+                              setSocket8CommandJson(JSON.stringify({ command: "ROTATE_YAW", parameters: { angle: 90.0 } }, null, 2));
+                              soundSynth.playSystemBeep();
+                            }}
+                            className="bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 py-1 rounded text-[8px] font-mono text-indigo-305 text-center"
+                          >
+                            ROTATE_YAW
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSocket8CommandJson(JSON.stringify({ command: "TRIGGER_ALARM", parameters: { trigger: true, alert_level: "critical" } }, null, 2));
+                              soundSynth.playSystemBeep();
+                            }}
+                            className="bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 py-1 rounded text-[8px] font-mono text-indigo-305 text-center"
+                          >
+                            ALARM
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSocket8CommandJson(JSON.stringify({ command: "CALIBRATE_ACCELEROMETER", parameters: { force: true } }, null, 2));
+                              soundSynth.playSystemBeep();
+                            }}
+                            className="bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 py-1 rounded text-[8px] font-mono text-indigo-305 text-center"
+                          >
+                            CALIBRATE
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex-grow sm:w-1/2">
+                        <textarea
+                          value={socket8CommandJson}
+                          onChange={(e) => setSocket8CommandJson(e.target.value)}
+                          rows={2}
+                          className="w-full font-mono text-[9px] bg-slate-950 border border-slate-800 rounded p-1.5 text-indigo-300 focus:outline-none focus:border-indigo-900 leading-snug text-left"
+                          dir="ltr"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSocket8CommandSend}
+                    className="w-full py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[10px] transition-all flex items-center justify-center gap-1"
+                  >
+                    <Terminal className="w-2.5 h-2.5" />
+                    <span>حقن كود البروتوكول النشط (Inject Raw JSON)</span>
+                  </button>
+                </div>
+
               </div>
             </div>
 

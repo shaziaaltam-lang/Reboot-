@@ -525,19 +525,19 @@ export default function CallScreen({
           <div className="flex flex-col gap-1 text-[9px] text-slate-400 font-mono bg-slate-950/70 p-2 rounded-lg border border-slate-800">
             <div className="flex justify-between gap-4">
               <span className="text-slate-500 uppercase">GPS Accuracy:</span>
-              <span className="text-white font-semibold">±${telemetry?.gps?.accuracy?.toFixed(0)}m</span>
+              <span className="text-white font-semibold">±{telemetry?.gps?.accuracy?.toFixed(0)}m</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500 uppercase">Speed:</span>
-              <span className="text-blue-400 font-bold">${(speed * 3.6).toFixed(1)} km/h</span>
+              <span className="text-blue-400 font-bold">{(speed * 3.6).toFixed(1)} km/h</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500 uppercase">Pitch / Roll:</span>
-              <span className="text-emerald-400 text-left font-serif">${pitch.toFixed(0)}° / ${roll.toFixed(0)}°</span>
+              <span className="text-emerald-400 text-left font-serif">{pitch.toFixed(0)}° / {roll.toFixed(0)}°</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500 uppercase">Pressure:</span>
-              <span className="text-amber-400 text-left">${telemetry?.env?.pressureHpa?.toFixed(0)} hPa</span>
+              <span className="text-amber-400 text-left">{telemetry?.env?.pressureHpa?.toFixed(0)} hPa</span>
             </div>
           </div>
 

@@ -117,6 +117,7 @@ export default function App() {
   const activeCallStateRef = useRef<string>("idle");
   const handleIncomingVoiceTranscriptRef = useRef<any>(null);
   const isUserSendingRef = useRef(false);
+  const activeUtteranceRef = useRef<any>(null);
 
   // Sync references to solve React callback scope locks
   useEffect(() => {
@@ -283,7 +284,7 @@ export default function App() {
   useEffect(() => {
     if (typeof window !== "undefined" && SpeechRecognition) {
       const rec = new SpeechRecognition();
-      rec.continuous = false;
+      rec.continuous = true;
       rec.interimResults = true;
       rec.lang = "ar-EG"; // Egypt Arabic locale ensures flexible Arabic phonetic capture
 
@@ -319,9 +320,9 @@ export default function App() {
 
           // VAD silence detection Strategy:
           // If the browser Speech recognition engine has officially finalized the transcript piece,
-          // we wait a short 600ms pause to send it. Otherwise, if it's currently interim, we wait
-          // 1300ms of absolute silence (no typing/words updated) before triggering auto-submit.
-          const timeoutDelay = finalTranscript.trim() ? 650 : 1350;
+          // we wait a short 750ms pause to send it. Otherwise, if it's currently interim, we wait
+          // 1500ms of absolute silence (no typing/words updated) before triggering auto-submit.
+          const timeoutDelay = finalTranscript.trim() ? 750 : 1500;
 
           autoSendTimeout = setTimeout(() => {
             if (lastTranscriptText.trim() && handleIncomingVoiceTranscriptRef.current && activeCallStateRef.current === "listening") {
@@ -336,8 +337,8 @@ export default function App() {
 
       rec.onerror = (err: any) => {
         console.warn("Speech recognition error hook triggered:", err);
-        // If timeout or no voice captured
-        if (err.error === "no-speech") {
+        const errorType = err.error || "";
+        if (errorType === "no-speech") {
           setStatusText("لم أسمع نطقاً واضحاً. ركِّز الكاميرا أو انقر للتحدّث ثانية.");
           if (activeCallStateRef.current === "listening" && !isSpeakingRef.current && !isUserSendingRef.current) {
             // Restart listening in 2.5 seconds to keep stream alive
@@ -347,6 +348,14 @@ export default function App() {
               }
             }, 2500);
           }
+        } else if (errorType === "not-allowed") {
+          setStatusText("⚠️ إذن الميكروفون مرفوض أو معطل. يرجى تفعيله من شريط عنوان المتصفح.");
+        } else if (errorType === "audio-capture") {
+          setStatusText("⚠️ لم يتم العثور على ميكروفون متصل لتسجيل الصوت.");
+        } else if (errorType === "network") {
+          setStatusText("⚠️ خطأ اتصال بالشبكة لمعالجة التحويل من صوت إلى نص.");
+        } else {
+          setStatusText(`⚠️ تنبيه في الاستماع الصوتي: ${errorType}.`);
         }
       };
 
@@ -397,6 +406,7 @@ export default function App() {
     isSpeakingRef.current = true;
 
     const utterance = new SpeechSynthesisUtterance(text);
+    activeUtteranceRef.current = utterance; // Shield from Garbage Collection
     utterance.lang = "ar-EG"; // Force Arabic Egypt phonetic context!
     utterance.rate = userProfile.preferences.voice_speed || 1.0;
     
@@ -753,6 +763,16 @@ export default function App() {
         }
       });
 
+    } else if (currentCallState === "listening") {
+      // If there is any spoken words, click to send works immediately!
+      if (liveTranscript && liveTranscript.trim()) {
+        const textToSend = liveTranscript.trim();
+        setLiveTranscript("");
+        handleIncomingVoiceTranscript(textToSend);
+      } else {
+        // Fallback: if they click but haven't spoken anything yet, they can still end call manually
+        handleEndCall();
+      }
     } else {
       handleEndCall();
     }

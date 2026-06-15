@@ -336,7 +336,14 @@ ${spatialContext}
       throw err;
     }
 
-    const resultText = response.text || "{}";
+    let resultText = response.text || "{}";
+    // Strip possible markdown code blocks to avoid JSON parsing failures
+    if (resultText.includes("```")) {
+      const match = resultText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (match) {
+        resultText = match[1];
+      }
+    }
     const resultObj = JSON.parse(resultText.trim());
 
     return res.json(resultObj);
